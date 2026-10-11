@@ -499,8 +499,21 @@ def main():
     failed = [r for r in results if not r.get("success")]
     worker_errors = [r for r in failed if r.get("worker_error")]
 
+    # 只输出安全的错误分类，不打印请求 URL，避免认证令牌出现在 Actions 日志中。
+    error_categories = {}
+    for item in worker_errors:
+        error = str(item.get("error") or "UnknownError")
+        category = error if re.fullmatch(r"HTTP \d{3}", error) else error.split(":", 1)[0]
+        error_categories[category] = error_categories.get(category, 0) + 1
+
     log("CLOUDFLARE WORKER", f"检测成功: {len(success)}")
     log("CLOUDFLARE WORKER", f"检测失败: {len(failed)}" + (f" (其中 Worker 异常 {len(worker_errors)})" if worker_errors else ""))
+    if error_categories:
+        summary = ", ".join(
+            f"{name}={count}"
+            for name, count in sorted(error_categories.items(), key=lambda pair: (-pair[1], pair[0]))
+        )
+        log("CLOUDFLARE WORKER", f"异常分类: {summary}")
     log("CLOUDFLARE WORKER", f"耗时: {elapsed:.1f}s")
 
     if uniq and not success and len(worker_errors) == len(uniq):
